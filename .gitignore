@@ -1,0 +1,58 @@
+# Node modules
+node_modules/
+temp*
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build output
+dist/
+build/
+out/
+
+# Dependency directories
+jspm_packages/
+
+# OS/System files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Optional: macOS-specific
+DC_STORE
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# TypeScript
+*.tsbuildinfo
+
+# Misc
+*.tgz
+*.gz
+*.zip
+*.bak
+*.tmp
+
+# Git hooks and other config backups
+*.orig
+
+# Ignore lock files if not using them strictly
+# package-lock.json
+# yarn.lock
