@@ -1,0 +1,27 @@
+@URL = https://o7skyi8sba.execute-api.eu-north-1.amazonaws.com
+
+### Get Home Route
+GET {{URL}}
+
+
+
+### Create Profile Route
+POST {{URL}}/profile
+Content-Type: :application/json
+
+{
+ "username":"shakeAndBake"
+}
+
+
+### Get Welcome Route
+GET {{URL}}/welcome
+
+
+### Login Route
+POST {{URL}}/login
+Content-Type: :application/json
+
+{
+ "username":"shakeAndBake"
+}
