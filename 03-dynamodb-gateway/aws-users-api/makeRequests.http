@@ -1,0 +1,29 @@
+@URL = https://kyy7bbju0f.execute-api.eu-north-1.amazonaws.com
+
+
+### Get all users
+GET {{URL}}/users
+
+### Create a user
+POST {{URL}}/users
+Content-Type: application/json
+
+{
+    "name": "coding addict",
+    "email": "coding@addict.com"
+}
+
+### Get a user
+GET {{URL}}/users/3f9a7857-7247-4b37-ac08-38f0299c5c36
+
+### Update a user
+PUT {{URL}}/users/3f9a7857-7247-4b37-ac08-38f0299c5c36
+Content-Type: application/json
+
+{
+    "name": "coding addict",
+    "email": "coding@addict.com"
+}
+
+### Delete a user
+DELETE {{URL}}/users/3f9a7857-7247-4b37-ac08-38f0299c5c36
