@@ -1,4 +1,4 @@
-# AWS CDK Course
+# AWS CDK v2 with TypeScript – Build and Deploy Projects
 
 AWS CDK (Cloud Development Kit) is a developer-friendly framework that lets you define cloud infrastructure using programming languages like TypeScript or Python, instead of writing CloudFormation templates directly. It synthesizes your code into CloudFormation templates, giving you the best of both worlds: the ease of programming in your favorite language while leveraging AWS's powerful infrastructure management. As an Infrastructure as a Service (IaaS) tool, CDK enables teams to provision and manage virtualized computing resources over the internet, with AWS handling the underlying physical hardware while you focus on building your applications.
 
@@ -14,7 +14,15 @@ During the course, we will build the following stacks: 🏗️
 
 # AWS CDK Course
 
-## Setup
+## Before We Start
+
+Here are things you will need in order to follow along with the course
+
+- Basic JS & TS Knowledge
+- AWS Account (will setup together)
+- Node.js
+- Course Repository : source code, external resources and challenges.
+  [AWS CDK Course](https://github.com/john-smilga/aws-cdk-course)
 
 ### Create account
 
