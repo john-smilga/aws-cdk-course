@@ -1337,9 +1337,9 @@ DynamoDB pricing is based on two primary models: **On-Demand** and **Provisioned
 - create `src/lambda/handler.ts`
 
 ```ts
-import { APIGatewayProxyEventV2, APIGatewayProxyResult } from 'aws-lambda';
+import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 
-export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResult> => {
+export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
   const method = event.requestContext.http.method;
   const path = event.requestContext.http.path;
 
@@ -1397,7 +1397,7 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
   }
 };
 
-async function createUser(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResult> {
+async function createUser(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   // const { name, email } = JSON.parse(event.body as string);
 
   return {
@@ -1406,28 +1406,28 @@ async function createUser(event: APIGatewayProxyEventV2): Promise<APIGatewayProx
   };
 }
 
-async function getAllUsers(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResult> {
+async function getAllUsers(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   return {
     statusCode: 200,
     body: JSON.stringify({ message: 'fetch all users' }),
   };
 }
 
-async function getUser(userId: string): Promise<APIGatewayProxyResult> {
+async function getUser(userId: string): Promise<APIGatewayProxyResultV2> {
   return {
     statusCode: 200,
     body: JSON.stringify({ message: 'fetch single user' }),
   };
 }
 
-async function updateUser(event: APIGatewayProxyEventV2, userId: string): Promise<APIGatewayProxyResult> {
+async function updateUser(event: APIGatewayProxyEventV2, userId: string): Promise<APIGatewayProxyResultV2> {
   return {
     statusCode: 200,
     body: JSON.stringify({ message: 'update user' }),
   };
 }
 
-async function deleteUser(userId: string): Promise<APIGatewayProxyResult> {
+async function deleteUser(userId: string): Promise<APIGatewayProxyResultV2> {
   return {
     statusCode: 200,
     body: JSON.stringify({ message: 'delete user' }),
@@ -1624,7 +1624,7 @@ export class UsersApiStack extends cdk.Stack {
 `handler.ts`
 
 ```ts
-import { APIGatewayProxyEventV2, APIGatewayProxyResult } from 'aws-lambda';
+import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, GetCommand, UpdateCommand, DeleteCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { v4 as uuidv4 } from 'uuid';
@@ -1634,7 +1634,7 @@ const client = new DynamoDBClient({});
 const dynamoDB = DynamoDBDocumentClient.from(client);
 const TABLE_NAME = process.env.TABLE_NAME || '';
 
-export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResult> => {
+export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
   const method = event.requestContext.http.method;
   const path = event.requestContext.http.path;
 
@@ -1692,7 +1692,7 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
   }
 };
 
-async function createUser(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResult> {
+async function createUser(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   // const { name, email } = JSON.parse(event.body as string);
   const userId = uuidv4();
 
@@ -1716,7 +1716,7 @@ async function createUser(event: APIGatewayProxyEventV2): Promise<APIGatewayProx
   };
 }
 
-async function getUser(userId: string): Promise<APIGatewayProxyResult> {
+async function getUser(userId: string): Promise<APIGatewayProxyResultV2> {
   const result = await dynamoDB.send(
     new GetCommand({
       TableName: TABLE_NAME,
@@ -1737,7 +1737,7 @@ async function getUser(userId: string): Promise<APIGatewayProxyResult> {
   };
 }
 
-async function getAllUsers(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResult> {
+async function getAllUsers(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   const result = await dynamoDB.send(
     new ScanCommand({
       TableName: TABLE_NAME,
@@ -1750,7 +1750,7 @@ async function getAllUsers(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
   };
 }
 
-async function updateUser(event: APIGatewayProxyEventV2, userId: string): Promise<APIGatewayProxyResult> {
+async function updateUser(event: APIGatewayProxyEventV2, userId: string): Promise<APIGatewayProxyResultV2> {
   const { name, email } = JSON.parse(event.body!);
 
   const result = await dynamoDB.send(
@@ -1776,7 +1776,7 @@ async function updateUser(event: APIGatewayProxyEventV2, userId: string): Promis
   };
 }
 
-async function deleteUser(userId: string): Promise<APIGatewayProxyResult> {
+async function deleteUser(userId: string): Promise<APIGatewayProxyResultV2> {
   await dynamoDB.send(
     new DeleteCommand({
       TableName: TABLE_NAME,
