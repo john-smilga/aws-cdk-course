@@ -4,13 +4,13 @@ AWS CDK (Cloud Development Kit) is a developer-friendly framework that lets you 
 
 During the course, we will build the following stacks: 🏗️
 
-1. S3 Bucket
-2. Lambda + API Gateway (v2) + Secrets Manager
-3. HTTP API (v2) + DynamoDB
-4. SQS + API Gateway (v1)
-5. EventBridge
-6. Firehose
-7. Cognito Auth App
+1. S3 Bucket Stack
+2. API Gateway (v2) + Lambda + Secrets Manager Stack
+3. API Gateway (v2) + Lambda + DynamoDB Stack - Users Management API (CRUD) + Front-End
+4. API Gateway (v2) + Lambda + DynamoDB Stack - Product Management API (Upload Image) + Front-End
+5. API Gateway (v2) + Lambda + SQS Stack
+6. API Gateway (v2) + Lambda + SQS Stack - Document Processing API + Front-End
+7. API Gateway (v2) + Lambda + Cognito Stack - Secure API + Front-End
 
 # AWS CDK Course
 
