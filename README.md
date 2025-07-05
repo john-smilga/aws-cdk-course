@@ -1866,3 +1866,660 @@ This is a secure, efficient way to update specific fields in a DynamoDB record w
 - spin up the local dev instance
 - deploy to Netlify
 - change 'allowOrigins', don't forget about removing trailing '/'
+
+# Project 4 - Product Management Stack
+
+**Services Used:**
+
+- API Gateway
+- Lambda
+- DynamoDB
+- S3
+
+## Setup
+
+- create folder `product-management`
+- inside of it run `cdk init app --language=typescript`
+- remove existing git repository `rm -rf .git`
+- copy contents of README
+- run `npm i esbuild @types/aws-lambda @aws-sdk/client-dynamodb @aws-sdk/client-s3 @aws-sdk/lib-dynamodb @types/uuid uuid`
+
+**Libraries Used:**
+
+- **esbuild**: Fast JavaScript/TypeScript bundler for Lambda deployment
+- **@types/aws-lambda**: TypeScript type definitions for AWS Lambda
+- **@aws-sdk/client-dynamodb**: AWS SDK for DynamoDB operations
+- **@aws-sdk/client-s3**: AWS SDK for S3 operations
+- **@aws-sdk/lib-dynamodb**: Utility library for easier DynamoDB operations
+- **@types/uuid**: TypeScript type definitions for UUID generation
+- **uuid**: Library for generating unique identifiers
+
+## Lambdas
+
+- create `src/lambda/products`
+  - `createProduct.ts`
+  - `getAllProducts.ts`
+  - `deleteProduct.ts`
+  - `generateThumbnail.ts` (automatically triggered by S3 events)
+
+```ts
+import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+
+export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
+  console.log('Event: ', event);
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ message: 'create product' }),
+  };
+};
+```
+
+- repeat for all Lambdas
+
+## Stack
+
+`product-management-stack.ts`
+
+```ts
+import * as cdk from 'aws-cdk-lib';
+import { Construct } from 'constructs';
+import * as apigatewayv2 from 'aws-cdk-lib/aws-apigatewayv2';
+import * as apigatewayv2_integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as lambdaRuntime from 'aws-cdk-lib/aws-lambda';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as path from 'path';
+
+export class ProductManagementStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+    super(scope, id, props);
+    // Create DynamoDB table for products
+    const productsTable = new dynamodb.Table(this, `${this.stackName}-Products-Table`, {
+      tableName: `${this.stackName}-Products-Table`,
+      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY, // For development - change to RETAIN for production
+    });
+
+    // Create S3 bucket for product images
+    const productImagesBucket = new s3.Bucket(this, `${this.stackName}-Product-Images-Bucket`, {
+      // needs to be lowercase
+      bucketName: `${this.stackName.toLowerCase()}-images`,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true, // For development - change to RETAIN for production
+    });
+
+    // Create Lambda functions for products
+    const createProductLambda = new NodejsFunction(this, `${this.stackName}-create-product-lambda`, {
+      runtime: lambdaRuntime.Runtime.NODEJS_22_X,
+      handler: 'handler',
+      entry: path.join(__dirname, '../src/lambda/products/createProduct.ts'),
+      functionName: `${this.stackName}-create-product-lambda`,
+      environment: {
+        PRODUCTS_TABLE_NAME: productsTable.tableName,
+        PRODUCT_IMAGES_BUCKET_NAME: productImagesBucket.bucketName,
+      },
+      timeout: cdk.Duration.seconds(60),
+    });
+
+    const getAllProductsLambda = new NodejsFunction(this, `${this.stackName}-get-all-products-lambda`, {
+      runtime: lambdaRuntime.Runtime.NODEJS_22_X,
+      handler: 'handler',
+      entry: path.join(__dirname, '../src/lambda/products/getAllProducts.ts'),
+      functionName: `${this.stackName}-get-all-products-lambda`,
+      environment: {
+        PRODUCTS_TABLE_NAME: productsTable.tableName,
+      },
+    });
+
+    const deleteProductLambda = new NodejsFunction(this, `${this.stackName}-delete-product-lambda`, {
+      runtime: lambdaRuntime.Runtime.NODEJS_22_X,
+      handler: 'handler',
+      entry: path.join(__dirname, '../src/lambda/products/deleteProduct.ts'),
+      functionName: `${this.stackName}-delete-product-lambda`,
+      environment: {
+        PRODUCTS_TABLE_NAME: productsTable.tableName,
+        PRODUCT_IMAGES_BUCKET_NAME: productImagesBucket.bucketName,
+      },
+    });
+
+    // Grant permissions to Lambda functions
+    productsTable.grantWriteData(createProductLambda);
+    productsTable.grantReadData(getAllProductsLambda);
+    productsTable.grantReadWriteData(deleteProductLambda);
+
+    // Grant S3 permissions
+    productImagesBucket.grantWrite(createProductLambda);
+    productImagesBucket.grantWrite(deleteProductLambda);
+
+    // Create API Gateway V2
+    const api = new apigatewayv2.HttpApi(this, `${this.stackName}-Api`, {
+      apiName: `${this.stackName}-Api`,
+      corsPreflight: {
+        allowHeaders: ['*'],
+        allowMethods: [apigatewayv2.CorsHttpMethod.ANY],
+        allowOrigins: ['*'],
+      },
+    });
+
+    // Add the products routes
+    api.addRoutes({
+      path: '/products',
+      methods: [apigatewayv2.HttpMethod.POST],
+      integration: new apigatewayv2_integrations.HttpLambdaIntegration('CreateProductIntegration', createProductLambda),
+    });
+
+    api.addRoutes({
+      path: '/products',
+      methods: [apigatewayv2.HttpMethod.GET],
+      integration: new apigatewayv2_integrations.HttpLambdaIntegration('GetAllProductsIntegration', getAllProductsLambda),
+    });
+
+    api.addRoutes({
+      path: '/products/{id}',
+      methods: [apigatewayv2.HttpMethod.DELETE],
+      integration: new apigatewayv2_integrations.HttpLambdaIntegration('DeleteProductIntegration', deleteProductLambda),
+    });
+
+    // Outputs
+    new cdk.CfnOutput(this, 'ApiGatewayUrl', {
+      value: api.url!,
+      description: 'API Gateway URL for the products API',
+      exportName: `${this.stackName}-ApiGatewayUrl`,
+    });
+
+    new cdk.CfnOutput(this, 'ProductsTableName', {
+      value: productsTable.tableName,
+      description: 'DynamoDB table name for products',
+      exportName: `${this.stackName}-Products-TableName`,
+    });
+
+    new cdk.CfnOutput(this, 'ProductImagesBucketName', {
+      value: productImagesBucket.bucketName,
+      description: 'S3 bucket name for product images',
+      exportName: `${this.stackName}-Product-Images-BucketName`,
+    });
+  }
+}
+```
+
+### Test API
+
+- create `makeRequests.http`
+
+```ts
+@URL = https://k83kjpufqf.execute-api.eu-north-1.amazonaws.com
+
+### Create Product
+POST {{URL}}/products
+Content-Type: application/json
+
+{
+    "name": "Product 1"
+}
+
+### Get All Products
+GET {{URL}}/products
+
+### Delete Product
+DELETE {{URL}}/products/1
+```
+
+## Types
+
+- create `src/types.product.ts`
+
+```ts
+// Product-related interfaces used across Lambda functions
+
+export type Product = {
+  name: string;
+  description: string;
+  price: number;
+  imageData: string; // Base64 encoded image data
+};
+
+export type ProductRecord = {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  imageUrl: string;
+  createdAt: string;
+  updatedAt: string;
+};
+```
+
+## Create Product
+
+```ts
+import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { v4 as uuidv4 } from 'uuid';
+import { Product, ProductRecord } from '../../types/product';
+
+// Initialize AWS clients
+const dynamoClient = new DynamoDBClient({});
+const docClient = DynamoDBDocumentClient.from(dynamoClient);
+const s3Client = new S3Client({});
+
+// Environment variables
+const PRODUCTS_TABLE_NAME = process.env.PRODUCTS_TABLE_NAME!;
+const PRODUCT_IMAGES_BUCKET_NAME = process.env.PRODUCT_IMAGES_BUCKET_NAME!;
+
+export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
+  console.log('Event received:', JSON.stringify(event, null, 2));
+
+  try {
+    // Parse and validate the request body
+    if (!event.body) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          message: 'Request body is required',
+        }),
+      };
+    }
+
+    const product: Product = JSON.parse(event.body);
+
+    // Validate required fields
+    if (!product.name || !product.description || typeof product.price !== 'number' || !product.imageData) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          message: 'All fields are required: name, description, price, and image',
+        }),
+      };
+    }
+
+    // Generate unique ID for the product
+    const productId = uuidv4();
+    const timestamp = new Date().toISOString();
+
+    // Upload image to S3
+    let imageUrl: string;
+    try {
+      console.log('Starting S3 upload process...');
+      console.log('Bucket name:', PRODUCT_IMAGES_BUCKET_NAME);
+
+      // Extract base64 data (remove data:image/...;base64, prefix)
+      const base64Data = product.imageData.replace(/^data:image\/[a-z]+;base64,/, '');
+      const imageBuffer = Buffer.from(base64Data, 'base64');
+
+      // Determine file extension from base64 data
+      const fileExtension = product.imageData.includes('data:image/jpeg') ? 'jpg' : product.imageData.includes('data:image/png') ? 'png' : product.imageData.includes('data:image/gif') ? 'gif' : 'jpg';
+
+      const s3Key = `products/${productId}.${fileExtension}`;
+
+      console.log('S3 upload parameters:', {
+        bucket: PRODUCT_IMAGES_BUCKET_NAME,
+        key: s3Key,
+        contentType: `image/${fileExtension}`,
+        bufferSize: imageBuffer.length,
+      });
+
+      await s3Client.send(
+        new PutObjectCommand({
+          Bucket: PRODUCT_IMAGES_BUCKET_NAME,
+          Key: s3Key,
+          Body: imageBuffer,
+          ContentType: `image/${fileExtension}`,
+        })
+      );
+
+      imageUrl = `https://${PRODUCT_IMAGES_BUCKET_NAME}.s3.amazonaws.com/${s3Key}`;
+
+      console.log('Image uploaded to S3 successfully:', imageUrl);
+    } catch (s3Error: any) {
+      console.error('Error uploading image to S3:', s3Error);
+      console.error('S3 Error details:', {
+        message: s3Error.message,
+        code: s3Error.code,
+        statusCode: s3Error.statusCode,
+        requestId: s3Error.requestId,
+        bucketName: PRODUCT_IMAGES_BUCKET_NAME,
+      });
+      console.log('S3 Error:', s3Error);
+      return {
+        statusCode: 500,
+        body: JSON.stringify({
+          message: 'Failed to upload image',
+          error: s3Error.message,
+        }),
+      };
+    }
+
+    // Create product record for DynamoDB
+    const productRecord: ProductRecord = {
+      id: productId,
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      imageUrl: imageUrl,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    // Store product in DynamoDB
+    try {
+      await docClient.send(
+        new PutCommand({
+          TableName: PRODUCTS_TABLE_NAME,
+          Item: productRecord,
+        })
+      );
+
+      console.log('Product stored in DynamoDB:', productId);
+    } catch (dynamoError) {
+      console.error('Error storing product in DynamoDB:', dynamoError);
+      return {
+        statusCode: 500,
+        body: JSON.stringify({
+          message: 'Failed to store product',
+        }),
+      };
+    }
+
+    // Return success response
+    return {
+      statusCode: 201,
+      body: JSON.stringify({
+        message: 'Product created successfully',
+        product: productRecord,
+      }),
+    };
+  } catch (error) {
+    console.error('Error processing request:', error);
+
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        message: 'Internal server error',
+      }),
+    };
+  }
+};
+```
+
+## AWS Console Test Event
+
+**Note:** The `body` field contains a JSON string (not a JSON object), so quotes inside must be escaped with `\"`.
+
+Since we only use `event.body` in our Lambda functions, we only need to provide the `body` field in our test event. If your Lambda code accesses other properties like `event.path`, `event.headers`, or `event.httpMethod`, you would need to include those fields in your test event as well.
+
+```json
+{
+  "body": "{\"name\":\"Test Product\",\"description\":\"This is a test product description\",\"price\":29.99,\"imageData\":\"data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=\"}"
+}
+```
+
+- check logs
+
+## Front-End
+
+- open up front-end folder
+- provide your backend api url
+- decrease the timeout
+- test the benefit of logs
+
+## Get All Products
+
+```ts
+import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { ProductRecord } from '../../types/product';
+
+// Initialize AWS clients
+const dynamoClient = new DynamoDBClient({});
+const docClient = DynamoDBDocumentClient.from(dynamoClient);
+
+// Environment variables
+const PRODUCTS_TABLE_NAME = process.env.PRODUCTS_TABLE_NAME!;
+
+export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
+  console.log('Event received:', JSON.stringify(event, null, 2));
+
+  try {
+    // Scan DynamoDB table to get all products
+    const scanResult = await docClient.send(
+      new ScanCommand({
+        TableName: PRODUCTS_TABLE_NAME,
+      })
+    );
+
+    const products: ProductRecord[] = (scanResult.Items as ProductRecord[]) || [];
+
+    // Sort products by creation date (newest first)
+    products.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    console.log(`Retrieved ${products.length} products from DynamoDB`);
+
+    // Return success response
+    return {
+      statusCode: 200,
+      body: JSON.stringify(products),
+    };
+  } catch (error) {
+    console.error('Error retrieving products:', error);
+
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        message: 'Internal server error',
+      }),
+    };
+  }
+};
+```
+
+- test in aws console and front-end
+
+## Fix
+
+```ts
+// Add bucket policy for public read access to images only
+productImagesBucket.addToResourcePolicy(
+  new iam.PolicyStatement({
+    effect: iam.Effect.ALLOW,
+    principals: [new iam.AnyPrincipal()],
+    actions: ['s3:GetObject'],
+    resources: [`${productImagesBucket.bucketArn}/products/*`],
+  })
+);
+```
+
+This is the CDK way to add bucket policies
+
+### 2. **`new iam.PolicyStatement()`**
+
+- Creates a new IAM policy statement
+- Defines permissions: who can do what on which resources
+
+### 3. **`effect: iam.Effect.ALLOW`**
+
+- Explicitly allows the specified actions
+- Could be `DENY` to block access instead
+
+### 4. **`principals: [new iam.AnyPrincipal()]`**
+
+- `AnyPrincipal()` means "anyone" (public access)
+- Makes the bucket publicly readable
+- Could be specific users, roles, or AWS accounts
+
+### 5. **`actions: ['s3:GetObject']`**
+
+- Only allows `GetObject` (read/download files)
+- Does NOT allow `PutObject`, `DeleteObject`, etc.
+- Users can view images but cannot upload or delete
+
+### 6. **`resources: [`${productImagesBucket.bucketArn}/products/\*`]`**
+
+- `bucketArn` = the bucket's Amazon Resource Name
+- `/products/*` = only files in the `products/` folder
+- The `*` wildcard means any file in that folder
+- **Security**: Only images in `products/` folder are public
+
+`next.config.ts`
+
+```ts
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
+  images: {
+    domains: ['productmanagementstack-images.s3.amazonaws.com'],
+  },
+};
+
+export default nextConfig;
+```
+
+## Delete Product
+
+```ts
+import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, DeleteCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { ProductRecord } from '../../types/product';
+
+// Initialize AWS clients
+const dynamoClient = new DynamoDBClient({});
+const docClient = DynamoDBDocumentClient.from(dynamoClient);
+const s3Client = new S3Client({});
+
+// Environment variables
+const PRODUCTS_TABLE_NAME = process.env.PRODUCTS_TABLE_NAME!;
+const PRODUCT_IMAGES_BUCKET_NAME = process.env.PRODUCT_IMAGES_BUCKET_NAME!;
+
+export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
+  console.log('Event received:', JSON.stringify(event, null, 2));
+
+  try {
+    // Get product ID from path parameters
+    const productId = event.pathParameters?.id;
+
+    if (!productId) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          message: 'Product ID is required',
+        }),
+      };
+    }
+
+    // First, get the product to retrieve the image URL
+    let product: ProductRecord;
+    try {
+      const getResult = await docClient.send(
+        new GetCommand({
+          TableName: PRODUCTS_TABLE_NAME,
+          Key: { id: productId },
+        })
+      );
+
+      if (!getResult.Item) {
+        return {
+          statusCode: 404,
+          body: JSON.stringify({
+            message: 'Product not found',
+          }),
+        };
+      }
+
+      product = getResult.Item as ProductRecord;
+    } catch (dynamoError) {
+      console.error('Error retrieving product from DynamoDB:', dynamoError);
+      return {
+        statusCode: 500,
+        body: JSON.stringify({
+          message: 'Failed to retrieve product',
+        }),
+      };
+    }
+
+    // Delete image from S3 if it exists
+    if (product.imageUrl) {
+      try {
+        // Extract S3 key from the URL
+        const urlParts = product.imageUrl.split('/');
+        const s3Key = urlParts.slice(3).join('/'); // Remove https://bucket-name.s3.amazonaws.com/
+
+        await s3Client.send(
+          new DeleteObjectCommand({
+            Bucket: PRODUCT_IMAGES_BUCKET_NAME,
+            Key: s3Key,
+          })
+        );
+
+        console.log('Image deleted from S3:', s3Key);
+      } catch (s3Error) {
+        console.error('Error deleting image from S3:', s3Error);
+        // Continue with product deletion even if image deletion fails
+      }
+    }
+
+    // Delete product from DynamoDB
+    try {
+      await docClient.send(
+        new DeleteCommand({
+          TableName: PRODUCTS_TABLE_NAME,
+          Key: { id: productId },
+        })
+      );
+
+      console.log('Product deleted from DynamoDB:', productId);
+    } catch (dynamoError) {
+      console.error('Error deleting product from DynamoDB:', dynamoError);
+      return {
+        statusCode: 500,
+        body: JSON.stringify({
+          message: 'Failed to delete product',
+        }),
+      };
+    }
+
+    // Return success response
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        message: 'Product deleted successfully',
+        productId: productId,
+      }),
+    };
+  } catch (error) {
+    console.error('Error processing request:', error);
+
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        message: 'Internal server error',
+      }),
+    };
+  }
+};
+```
+
+- aws console test event
+
+```json
+{
+  "pathParameters": {
+    "id": "123e4567-e89b-12d3-a456-426614174000"
+  }
+}
+```
+
+- first get product id by running `getAllProducts.ts` lambda and provide the value
+- run the test two times
+- test on front-end
+
+## The End
+
+- optional : destroy the stack `npx cdk destroy`
