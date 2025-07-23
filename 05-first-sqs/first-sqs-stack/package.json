@@ -1,0 +1,30 @@
+{
+  "name": "first-sqs",
+  "version": "0.1.0",
+  "bin": {
+    "first-sqs": "bin/first-sqs.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "jest",
+    "cdk": "cdk"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "22.7.9",
+    "aws-cdk": "2.1020.2",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.6.3"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sqs": "^3.848.0",
+    "@types/aws-lambda": "^8.10.150",
+    "aws-cdk-lib": "^2.206.0",
+    "axios": "^1.10.0",
+    "constructs": "^10.0.0",
+    "esbuild": "^0.25.6"
+  }
+}

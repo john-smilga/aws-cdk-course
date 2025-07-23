@@ -1,0 +1,15 @@
+@URL = https://386c7g09cf.execute-api.eu-north-1.amazonaws.com
+
+### Create Product
+POST {{URL}}/products
+Content-Type: application/json
+
+{
+    "name": "Product 1"
+}
+
+### Get All Products
+GET {{URL}}/products
+
+### Delete Product
+DELETE {{URL}}/products/1

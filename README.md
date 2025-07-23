@@ -1900,7 +1900,6 @@ This is a secure, efficient way to update specific fields in a DynamoDB record w
   - `createProduct.ts`
   - `getAllProducts.ts`
   - `deleteProduct.ts`
-  - `generateThumbnail.ts` (automatically triggered by S3 events)
 
 ```ts
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
@@ -2070,7 +2069,7 @@ DELETE {{URL}}/products/1
 
 ## Types
 
-- create `src/types.product.ts`
+- create `src/types/product.ts`
 
 ```ts
 // Product-related interfaces used across Lambda functions
@@ -2261,6 +2260,14 @@ Since we only use `event.body` in our Lambda functions, we only need to provide 
 
 - check logs
 
+**Error Response**
+
+```json
+{
+  "body": "{\"name\":\"Test Product\",\"description\":\"This is a test product description\",\"price\":\"not-a-number\",\"imageData\":\"\"}"
+}
+```
+
 ## Front-End
 
 - open up front-end folder
@@ -2324,7 +2331,19 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
 ## Fix
 
 ```ts
-// Add bucket policy for public read access to images only
+const productImagesBucket = new s3.Bucket(this, `${this.stackName}-Product-Images-Bucket`, {
+  bucketName: `${this.stackName.toLowerCase()}-images`,
+  removalPolicy: cdk.RemovalPolicy.DESTROY,
+  autoDeleteObjects: true,
+  blockPublicAccess: new s3.BlockPublicAccess({
+    blockPublicAcls: true,
+    blockPublicPolicy: false,
+    ignorePublicAcls: true,
+    restrictPublicBuckets: false,
+  }),
+});
+
+// Add bucket policy for fine-grained public access to product images only
 productImagesBucket.addToResourcePolicy(
   new iam.PolicyStatement({
     effect: iam.Effect.ALLOW,
@@ -2334,6 +2353,58 @@ productImagesBucket.addToResourcePolicy(
   })
 );
 ```
+
+# S3 Bucket Public Access Configuration Explained
+
+```ts
+blockPublicAcls: true,
+blockPublicPolicy: false,
+ignorePublicAcls: true,
+restrictPublicBuckets: false,
+```
+
+### `blockPublicAcls: true`
+
+- **What it does**: Prevents setting public ACLs (Access Control Lists) on individual objects
+- **Why**: ACLs are an older, less secure way to control access. By blocking them, you force all access control through bucket policies (which is more secure)
+- **Example**: This prevents someone from uploading an object with a public ACL like `public-read`
+
+### `blockPublicPolicy: false`
+
+- **What it does**: Allows bucket policies to be applied
+- **Why**: When `true`, it blocks any bucket policy that grants public access
+- **Why we set it to `false`**: We need this to be `false` so our bucket policy can work (the policy that allows public read access to `/products/*`)
+
+### `ignorePublicAcls: true`
+
+- **What it does**: Ignores any public ACLs that might be set on objects
+- **Why**: Even if someone somehow sets a public ACL on an object, this setting ignores it and uses the bucket policy instead
+- **Security benefit**: Provides an extra layer of protection against accidental public ACLs
+
+### `restrictPublicBuckets: false`
+
+- **What it does**: Allows the bucket policy to grant public access
+- **Why**: When `true`, this blocks ALL public access regardless of bucket policies
+- **Why we set it to `false`**: We need this to be `false` so our bucket policy can grant public read access to product images
+
+## The Security Strategy
+
+This configuration creates a **defense-in-depth** approach:
+
+1. **Block ACLs** (`blockPublicAcls: true`) - Prevent insecure ACL-based access
+2. **Allow policies** (`blockPublicPolicy: false`) - Enable secure bucket policy control
+3. **Ignore ACLs** (`ignorePublicAcls: true`) - Extra protection against ACL bypass
+4. **Allow public via policy** (`restrictPublicBuckets: false`) - Let our bucket policy work
+
+## Result
+
+- ✅ Bucket is private by default
+- ✅ Only objects in `/products/*` are publicly readable (via bucket policy)
+- ✅ No public upload/delete access
+- ✅ Lambda functions control what gets uploaded
+- ✅ Maximum security with minimum public exposure
+
+This is the modern, secure way to handle S3 public access - using bucket policies for fine-grained control rather than ACLs.
 
 This is the CDK way to add bucket policies
 
@@ -2373,7 +2444,14 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   images: {
-    domains: ['productmanagementstack-images.s3.amazonaws.com'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'productmanagementstack-images.s3.amazonaws.com',
+        port: '',
+        pathname: '/**',
+      },
+    ],
   },
 };
 
@@ -2518,6 +2596,7 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
 
 - first get product id by running `getAllProducts.ts` lambda and provide the value
 - run the test two times
+- second time you should see the 404 response since we removed the product
 - test on front-end
 
 ## The End
@@ -2536,6 +2615,7 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
 
 - create `first-sqs` folder and initialize new cdk app `cdk init app --language=typescript`
 - install packages `npm i @types/aws-lambda aws-cdk-lib @aws-sdk/client-sqs axios esbuild`
+- copy README.md
 
 ## Package Explanations
 
@@ -2557,7 +2637,7 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
 
 ## Solution
 
-- create `src/lambdas/handler.ts`
+- create `src/lambda/handler.ts`
 
 ```ts
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
@@ -2911,6 +2991,22 @@ consumerLambda.addEventSource(
 
 **Testing Configuration:** For testing purposes, it's recommended to set the visibility timeout to 1 second (`visibilityTimeout: cdk.Duration.seconds(1)`) when working with DLQs. This allows you to quickly see failed messages appear in the DLQ without waiting for the full visibility timeout period. In production, you would use a more realistic timeout based on your actual processing time.
 
+`handler`
+
+```ts
+export const consumer = async (event: SQSEvent): Promise<void> => {
+  throw new Error('test');
+  const messages = event.Records;
+  console.log('Event received :', event);
+  for (const message of messages) {
+    const { orderId } = JSON.parse(message.body);
+    console.log('Processing order:', orderId);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    console.log('Finished processing order:', orderId);
+  }
+};
+```
+
 `stack`
 
 ```ts
@@ -2931,24 +3027,11 @@ const queue = new sqs.Queue(this, 'OrdersQueue', {
 });
 ```
 
-`handler`
-
-```ts
-export const consumer = async (event: SQSEvent): Promise<void> => {
-  throw new Error('test');
-  const messages = event.Records;
-  console.log('Event received :', event);
-  for (const message of messages) {
-    const { orderId } = JSON.parse(message.body);
-    console.log('Processing order:', orderId);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    console.log('Finished processing order:', orderId);
-  }
-};
-```
+- `maxReceiveCount: 3` means SQS will attempt to deliver the message to the consumer Lambda 3 times before moving it to the Dead Letter Queue.
 
 - re-deploy the stack
 - send message/s
+- Be patient, as it may take a few minutes for failed messages to appear in the Dead Letter Queue (DLQ)
 
 ## The End
 

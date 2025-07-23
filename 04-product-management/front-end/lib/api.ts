@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'https://k83kjpufqf.execute-api.eu-north-1.amazonaws.com';
+const API_BASE_URL = 'https://ffa791bn41.execute-api.eu-north-1.amazonaws.com';
 
 export interface Product {
   id?: string;
